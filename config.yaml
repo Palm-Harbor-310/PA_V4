@@ -1,0 +1,30 @@
+file_paths:
+  input_folder: "input/"
+  po_output_folder: "output/po/"
+  invoice_output_folder: "output/invoice/"
+  archive_folder: "archive/"
+  split_folder: "split/"
+  error_folder: "error/"
+
+azure_settings:
+  inv:
+    endpoint: "https://phh-invoices.cognitiveservices.azure.com/"
+  po:
+    endpoint: "https://pos.cognitiveservices.azure.com/"
+
+
+
+data_transformation:
+  header_mappings:
+    order: "pu_quant"
+    items: "pu_quant"
+    quantity: "pu_quant"
+    qty: "pu_quant"
+    deacom#: "pr_codenum"
+    deacom: "pr_codenum"
+    "deacom #": "pr_codenum"
+    "deacom  #": "pr_codenum"
+    cost: "pu_price"
+    "unit price": "pu_price"
+    price: "pu_price"
+    "#": "pu_price"
