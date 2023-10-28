@@ -19,13 +19,11 @@ This application is designed to automate the process of handling PDFs and Excel 
 
 ## Usage
 
-Run `python src/main_app.py` to start the application.
+Run `python src/main_app.py` to start the application. (Doesn't Currently Work)
 
 Run `python src/mockup.py` to use the mockup GUI
 
-## Contributing
 
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests.
 
 ## License
 
