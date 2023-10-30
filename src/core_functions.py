@@ -6,6 +6,7 @@ import os
 import pandas as pd
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
+from PyPDF2 import PdfFileWriter, PdfFileReader
 
 
 # Load the YAML configuration file
@@ -46,11 +47,22 @@ def get_azure_client(service_type):
 
 
 # Function to split multi-page PDFs into single-page PDFs
+
+
 def split_pdfs(input_folder, output_folder):
     """
     Splits multi-page PDFs into single-page PDFs.
     """
-    pass
+    for filename in os.listdir(input_folder):
+        if filename.endswith(".pdf"):
+            input_pdf = PdfFileReader(open(f"{input_folder}/{filename}", "rb"))
+
+            for i in range(input_pdf.getNumPages()):
+                output = PdfFileWriter()
+                output.addPage(input_pdf.getPage(i))
+
+                with open(f"{output_folder}/{filename[:-4]}_page_{i}.pdf", "wb") as output_pdf:
+                    output.write(output_pdf)
 
 # Function to send a PDF to Azure for data extraction
 def send_pdf_to_azure(file_path, client):

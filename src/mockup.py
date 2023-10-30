@@ -1,10 +1,13 @@
 import sys
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QMenuBar, QMenu, 
-                             QToolBar, QTabWidget, QWidget, QHBoxLayout, 
-                             QVBoxLayout, QLineEdit, QPushButton, QComboBox,
-                             QTableWidget, QAction, QFileDialog, QDialog, QLabel)
+                            QToolBar, QTabWidget, QWidget, QHBoxLayout, 
+                            QVBoxLayout, QLineEdit, QPushButton, QComboBox,
+                            QTableWidget, QAction, QFileDialog, QDialog, QLabel,
+                            QDialogButtonBox,QTreeView, QFileSystemModel, QSplitter,
+                            QDockWidget)
 
 from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import (Qt,QDir)
 
 class MainWindow(QMainWindow):
 
@@ -19,10 +22,16 @@ class MainWindow(QMainWindow):
 
         self.createTabs()
 
-        self.setCentralWidget(self.tabs)
+        self.createButtonBox()
+        
+        self.setupCentralLayout()
+
+        self.setupButtonLayout()
+    
+
 
     def createMenuBar(self):
-      
+    
         menuBar = self.menuBar()
         
         # File menu
@@ -79,29 +88,84 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.pdfTab = QWidget()
         self.azureTab = QWidget()
-       
+    
+    
         self.pdfTabLayout = QVBoxLayout()
         self.azureTabLayout = QVBoxLayout()
+        
 
         self.pdfTab.setLayout(self.pdfTabLayout)
         self.azureTab.setLayout(self.azureTabLayout)
+        
 
         self.tabs.addTab(self.pdfTab,"PDF")
         self.tabs.addTab(self.azureTab,"Azure")
+    
+    def createButtonBox(self):
+        
+        # Create the button box with "Next", "Cancel", and custom "Import" buttons
+        self.buttonBox = QDialogButtonBox()
+        nextButton = self.buttonBox.addButton("Next", QDialogButtonBox.AcceptRole)
+        cancelButton = self.buttonBox.addButton("Cancel", QDialogButtonBox.RejectRole)
+        
 
+        # Connect the signals to slots
+        nextButton.clicked.connect(self.onNext)
+        cancelButton.clicked.connect(self.onCancel)
+        
+        # Create "Import" button
+        buttonBoxLayout = QHBoxLayout()
+        self.importButton = QPushButton("Import")
+        self.importButton.clicked.connect(self.onImport)
+        buttonBoxLayout.addWidget(self.importButton, alignment=Qt.AlignBottom | Qt.AlignLeft)
+
+    def setupCentralLayout(self):
+    # Create a QWidget for the central widget
+        centralWidget = QWidget(self)
+
+        # Create a layout
+        layout = QVBoxLayout()
+
+        # Add the tabs to the layout
+        layout.addWidget(self.tabs)
+
+        # Set the layout of the central widget
+        centralWidget.setLayout(layout)
+
+        # Set the central widget of the main window
+        self.setCentralWidget(centralWidget)
+
+    def setupButtonLayout(self):
+        # Create a widget for the buttons
+        buttonWidget = QWidget()
+
+        # Create a layout for the buttons
+        buttonBoxLayout = QHBoxLayout()
+
+        # Add Import button and button box to the layout
+        buttonBoxLayout.addWidget(self.importButton, alignment=Qt.AlignLeft)
+        buttonBoxLayout.addWidget(self.buttonBox)
+
+        # Set the layout of the button widget
+        buttonWidget.setLayout(buttonBoxLayout)
+
+        # Create a dock widget, set it to the button widget and add it to the main window
+        dockWidget = QDockWidget()
+        dockWidget.setWidget(buttonWidget)
+        self.addDockWidget(Qt.BottomDockWidgetArea, dockWidget)
     def openPdf(self):
-      
+    
         path = QFileDialog.getOpenFileName(self, 'Open PDF')[0]
 
         if path:
-          print("Opened:", path)
+            print("Opened:", path)
 
     def browsePdf(self):
-      
+    
         path = QFileDialog.getOpenFileName(self, 'Browse PDF')[0]  
 
         if path:
-          print("Browsed:", path)
+            print("Browsed:", path)
 
     def setInputPath(self):
         dialog = SetPathDialog("Select Input Folder")
@@ -130,6 +194,31 @@ class MainWindow(QMainWindow):
             self.azureKey = dialog.azureKey
             self.azureEndpoint = dialog.azureEndpoint
             # Now you can use self.azureKey and self.azureEndpoint wherever you need them
+
+    # Slot for "Next" button
+    def onNext(self):
+        print("Next button clicked")
+
+    # Slot for "Cancel" button
+    def onCancel(self):
+        print("Cancel button clicked")
+
+    # Slot for "Import" button
+    def onImport(self):
+        path, _ = QFileDialog.getOpenFileName(self, 'Import File')
+        if path:
+            print(f"Imported: {path}")
+
+    def createNavigationPane(self):
+        self.fileExplorer = FileExplorer()
+        self.fileExplorer.setRootPath(QDir.rootPath())
+        self.fileExplorer.clicked.connect(self.onFileClicked)
+
+    def onFileClicked(self, index):
+        path = self.fileExplorer.fileInfo(index).absoluteFilePath()
+        print(f"File clicked: {path}")
+
+    
 
 class SetPathDialog(QDialog):
 
@@ -204,6 +293,22 @@ class AzureCredentialsDialog(QDialog):
         self.azureKey = self.azureKeyInput.text()
         self.azureEndpoint = self.azureEndpointInput.text()
         super().accept()
+
+class FileExplorer(QWidget):
+    def __init__(self, dir_path):
+        super().__init__()
+        self.tree = QTreeView(self)
+        self.model = QFileSystemModel()
+        self.model.setRootPath(QDir.rootPath())
+        self.tree.setModel(self.model)
+        self.tree.setRootIndex(self.model.index(dir_path))
+        layout = QVBoxLayout(self)
+
+
+        
+        layout.addWidget(self.tree)
+
+
 
 # Main
 app = QApplication(sys.argv)
