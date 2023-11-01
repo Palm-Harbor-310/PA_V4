@@ -16,6 +16,10 @@ class MainWindow(QMainWindow):
         
         self.setWindowTitle("Invoice Processing")
         
+        # Initialize the label in the constructor
+        self.fileIndicatorLabel = QLabel("No file loaded")
+        self.fileIndicatorLabel.setMaximumHeight(30)
+
         self.createMenuBar()
         
         self.createToolBar()
@@ -23,10 +27,15 @@ class MainWindow(QMainWindow):
         self.createTabs()
 
         self.createButtonBox()
+
+        self.createNavigationPane()
         
         self.setupCentralLayout()
 
         self.setupButtonLayout()
+
+        
+        
     
 
 
@@ -103,21 +112,22 @@ class MainWindow(QMainWindow):
     
     def createButtonBox(self):
         
-        # Create the button box with "Next", "Cancel", and custom "Import" buttons
+        # Create the button box with "Next" and custom "Import" buttons
         self.buttonBox = QDialogButtonBox()
         nextButton = self.buttonBox.addButton("Next", QDialogButtonBox.AcceptRole)
-        cancelButton = self.buttonBox.addButton("Cancel", QDialogButtonBox.RejectRole)
-        
+        exitButton = self.buttonBox.addButton("Exit", QDialogButtonBox.RejectRole)
 
         # Connect the signals to slots
         nextButton.clicked.connect(self.onNext)
-        cancelButton.clicked.connect(self.onCancel)
-        
+        exitButton.clicked.connect(self.close)
         # Create "Import" button
         buttonBoxLayout = QHBoxLayout()
         self.importButton = QPushButton("Import")
         self.importButton.clicked.connect(self.onImport)
         buttonBoxLayout.addWidget(self.importButton, alignment=Qt.AlignBottom | Qt.AlignLeft)
+
+        # Add QDialogButtonBox to the layout
+        buttonBoxLayout.addWidget(self.buttonBox)
 
     def setupCentralLayout(self):
     # Create a QWidget for the central widget
@@ -126,8 +136,17 @@ class MainWindow(QMainWindow):
         # Create a layout
         layout = QVBoxLayout()
 
-        # Add the tabs to the layout
-        layout.addWidget(self.tabs)
+        # Create a splitter
+        splitter = QSplitter(Qt.Horizontal)
+
+        # Add the navigation pane and the tabs to the splitter
+        splitter.addWidget(self.fileExplorer)
+        splitter.addWidget(self.tabs)
+        splitter.setSizes([100, 400])
+
+        
+        layout.addWidget(self.fileIndicatorLabel)
+        layout.addWidget(splitter)
 
         # Set the layout of the central widget
         centralWidget.setLayout(layout)
@@ -153,6 +172,7 @@ class MainWindow(QMainWindow):
         dockWidget = QDockWidget()
         dockWidget.setWidget(buttonWidget)
         self.addDockWidget(Qt.BottomDockWidgetArea, dockWidget)
+    
     def openPdf(self):
     
         path = QFileDialog.getOpenFileName(self, 'Open PDF')[0]
@@ -200,22 +220,23 @@ class MainWindow(QMainWindow):
         print("Next button clicked")
 
     # Slot for "Cancel" button
-    def onCancel(self):
-        print("Cancel button clicked")
+    def onExit(self):
+        self.close()
 
     # Slot for "Import" button
     def onImport(self):
         path, _ = QFileDialog.getOpenFileName(self, 'Import File')
         if path:
             print(f"Imported: {path}")
+            # Update the label text with the name of the imported file
+            self.fileIndicatorLabel.setText(f"Loaded: {path}")
 
     def createNavigationPane(self):
         self.fileExplorer = FileExplorer()
-        self.fileExplorer.setRootPath(QDir.rootPath())
-        self.fileExplorer.clicked.connect(self.onFileClicked)
+        self.fileExplorer.tree.clicked.connect(self.onFileClicked)
 
     def onFileClicked(self, index):
-        path = self.fileExplorer.fileInfo(index).absoluteFilePath()
+        path = self.fileExplorer.model.fileInfo(index).absoluteFilePath()
         print(f"File clicked: {path}")
 
     
@@ -295,13 +316,13 @@ class AzureCredentialsDialog(QDialog):
         super().accept()
 
 class FileExplorer(QWidget):
-    def __init__(self, dir_path):
+    def __init__(self):
         super().__init__()
         self.tree = QTreeView(self)
         self.model = QFileSystemModel()
         self.model.setRootPath(QDir.rootPath())
         self.tree.setModel(self.model)
-        self.tree.setRootIndex(self.model.index(dir_path))
+        self.tree.setRootIndex(self.model.index(QDir.rootPath()))
         layout = QVBoxLayout(self)
 
 
