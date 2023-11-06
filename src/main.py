@@ -21,7 +21,7 @@ paths = {'input': 'Input/', 'processed': 'Processed/', 'output': 'Output/', 'arc
 # Worker thread
 class WorkerThread(QThread):
     finished = pyqtSignal()
-
+    progress = pyqtSignal(int)
     def __init__(self, func, *args, **kwargs):
         super().__init__()
         self.func = func
@@ -49,17 +49,21 @@ class PDFProcessingApp(QMainWindow):
         self.setCentralWidget(self.centralWidget)
 
         # Create and set layout for the central widget
-        layout = QVBoxLayout(self.centralWidget)
+        layout = QGridLayout(self.centralWidget)
+
+        self.statusLabel = QLabel('Status: Ready', self)
+        layout.addWidget(self.statusLabel, 0, 0, 1, 2)
 
         self.progressBar = QProgressBar(self)
-        layout.addWidget(self.progressBar)
+        layout.addWidget(self.progressBar, 2, 0, 1, 2)
+
+        self.importButton = QPushButton('Import Files', self)
+        self.importButton.clicked.connect(self.importFiles)
+        layout.addWidget(self.importButton, 1, 0)
 
         self.processButton = QPushButton('Process Files', self)
         self.processButton.clicked.connect(self.processFiles)
-        layout.addWidget(self.processButton)
-
-        self.statusLabel = QLabel('Status: Ready', self)
-        layout.addWidget(self.statusLabel)
+        layout.addWidget(self.processButton, 1, 1)
 
 
     def center(self):
@@ -69,25 +73,68 @@ class PDFProcessingApp(QMainWindow):
         self.move(qr.topLeft())
 
     @pyqtSlot()
-    def processFiles(self):
+    def importFiles(self):
+        # File import logic goes here
         options = QFileDialog.Options()
         files, _ = QFileDialog.getOpenFileNames(self, "Choose a PDF file", "", "PDF Files (*.pdf)", options=options)
         if files:
+            self.files = files  # Store the files as an instance variable
+            self.statusLabel.setText('Status: Files Imported')
+    @pyqtSlot()
+    def processFiles(self):
+        if hasattr(self, 'files') and self.files:        
             self.processButton.setEnabled(False)
             self.progressBar.setValue(0)
             self.statusLabel.setText('Status: Processing...')
-            self.worker = WorkerThread(self.processPDFs, files)
-            self.worker.finished.connect(self.onProcessingComplete)
+            self.worker = WorkerThread(self.processPDFs, self.files)
+            self.worker.progress.connect(self.updateProgressBar)  # Connect progress signal to updateProgressBar slot
+            self.worker.finished.connect(self.onProcessingComplete)  # Connect finished signal to onProcessingComplete slot
             self.worker.start()
+        else:
+            QMessageBox.warning(self, 'Warning', 'No files have been imported.')
 
     def processPDFs(self, files):
-        for file_path in files:
+        total_files = len(files)
+        total_steps = 4  # Number of steps in the processing of each file
+        progress_per_step = 100 / (total_files * total_steps)
+        total_progress = 0  # Keep track of the total progress
+
+        for index, file_path in enumerate(files):
+            # Step 1: Copy file
             shutil.copy(file_path, main_path + paths['input'])
-        self.split_pdf(main_path + paths['input'])
-        self.analyze_general_documents()
-        self.move_to_archive(paths['input'], paths['archive_input'])
-        self.move_to_archive(paths['processed'], paths['archive_processed'])
-        self.progressBar.setValue(100)
+            total_progress += progress_per_step
+            self.worker.progress.emit(total_progress)  # Emit total progress
+
+            # Step 2: Split PDF
+            self.split_pdf(main_path + paths['input'])
+            total_progress += progress_per_step
+            self.worker.progress.emit(total_progress)  # Emit total progress
+
+            # Step 3: Analyze documents
+            self.analyze_general_documents()
+            total_progress += progress_per_step
+            self.worker.progress.emit(total_progress)  # Emit total progress
+
+            # Step 4: Move to archive
+            self.move_to_archive(paths['input'], paths['archive_input'])
+            self.move_to_archive(paths['processed'], paths['archive_processed'])
+            total_progress += progress_per_step
+            self.worker.progress.emit(total_progress)  # Emit total progress
+
+        self.worker.finished.emit()  # Signal that processing is complete
+
+
+    
+    def emitProgress(self, progress_increment):
+        # Emit the progress signal with the updated value
+        current_progress = self.progressBar.value()
+        new_progress = min(current_progress + progress_increment, 100)
+        self.worker.progress.emit(new_progress)
+
+        
+    @pyqtSlot(int)
+    def updateProgressBar(self, value):
+        self.progressBar.setValue(value)
 
     @pyqtSlot()
     def onProcessingComplete(self):
@@ -151,8 +198,6 @@ def main():
     ex = PDFProcessingApp()
     ex.show()
     sys.exit(app.exec_())
-
-
 
 if __name__ == "__main__":
     main()
