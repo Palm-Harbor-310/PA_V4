@@ -1,7 +1,6 @@
 # Import the necessary libraries
 from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QComboBox, QFileDialog, QLabel,QDesktopWidget
-from core_functions import send_pdf_to_azure
-from core_functions import split_pdfs
+
 
 # Create the main application window
 app = QApplication([])

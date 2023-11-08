@@ -1,3 +1,4 @@
+#mockup.py
 import sys
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QMenuBar, QMenu, 
                             QToolBar, QTabWidget, QWidget, QHBoxLayout, 

@@ -1,8 +1,10 @@
+#main.py
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget,
     QFileDialog, QLabel, QProgressBar, QMessageBox, QGridLayout, QDesktopWidget
 )
 from PyQt5.QtCore import pyqtSlot, QThread, pyqtSignal
+from PyQt5.QtGui import QIcon
 import sys
 import os
 import shutil
@@ -23,6 +25,17 @@ class WorkerThread(QThread):
     finished = pyqtSignal()
     progress = pyqtSignal(int)
     def __init__(self, func, *args, **kwargs):
+        """
+        Initializes a new instance of the class.
+
+        Args:
+            func (callable): The function to be called.
+            *args: Variable length argument list.
+            **kwargs: Arbitrary keyword arguments.
+
+        Returns:
+            None
+        """
         super().__init__()
         self.func = func
         self.args = args
@@ -35,11 +48,28 @@ class WorkerThread(QThread):
 # Main Application Window
 class PDFProcessingApp(QMainWindow):
     def __init__(self):
+        """
+        Initializes the class instance.
+        """
         super().__init__()
         self.initUI()
         self.client = DocumentAnalysisClient(endpoint=endpoint, credential=credential)
 
     def initUI(self):
+        """
+        Initializes the user interface for the PDF processing app.
+
+        This function sets the window title, geometry, and centers the window on the screen.
+        It also creates a central widget to hold other widgets and sets its layout.
+        The function adds a status label, a progress bar, and two buttons to the layout.
+
+        Parameters:
+        - self: The instance of the class.
+
+        Returns:
+        - None
+        """
+        self.setWindowIcon(QIcon('icons\\appIcon.png'))
         self.setWindowTitle('PDF Processing App')
         self.setGeometry(300, 300, 600, 200)
         self.center()
@@ -52,18 +82,24 @@ class PDFProcessingApp(QMainWindow):
         layout = QGridLayout(self.centralWidget)
 
         self.statusLabel = QLabel('Status: Ready', self)
+        self.statusLabel.setMaximumHeight(20)  # Set maximum height to 20 pixels
         layout.addWidget(self.statusLabel, 0, 0, 1, 2)
 
         self.progressBar = QProgressBar(self)
-        layout.addWidget(self.progressBar, 2, 0, 1, 2)
+        layout.addWidget(self.progressBar, 1, 0, 1, 2)
 
         self.importButton = QPushButton('Import Files', self)
         self.importButton.clicked.connect(self.importFiles)
-        layout.addWidget(self.importButton, 1, 0)
+        self.importButton.setMaximumWidth(100)  # Set maximum width to 100 pixels
+        layout.addWidget(self.importButton, 2, 0)
 
         self.processButton = QPushButton('Process Files', self)
         self.processButton.clicked.connect(self.processFiles)
-        layout.addWidget(self.processButton, 1, 1)
+        layout.addWidget(self.processButton, 2, 1)
+        
+        self.exitButton = QPushButton('Exit', self)
+        self.exitButton.setMaximumWidth(100)  # Set maximum width to 100 pixels, adjust as needed
+        layout.addWidget(self.exitButton, 3, 1)  # Positioned in the right column
 
 
     def center(self):
@@ -74,6 +110,18 @@ class PDFProcessingApp(QMainWindow):
 
     @pyqtSlot()
     def importFiles(self):
+        """
+        Import files using a file dialog.
+
+        This function opens a file dialog to allow the user to select one or more PDF files.
+        The selected files are stored as an instance variable.
+
+        Parameters:
+        - None
+
+        Returns:
+        - None
+        """
         # File import logic goes here
         options = QFileDialog.Options()
         files, _ = QFileDialog.getOpenFileNames(self, "Choose a PDF file", "", "PDF Files (*.pdf)", options=options)
@@ -94,46 +142,72 @@ class PDFProcessingApp(QMainWindow):
             QMessageBox.warning(self, 'Warning', 'No files have been imported.')
 
     def processPDFs(self, files):
+        """
+        Process a list of PDF files.
+
+        Args:
+            files (list): A list of file paths to the PDF files.
+
+        Returns:
+            None
+        """
         total_files = len(files)
         total_steps = 4  # Number of steps in the processing of each file
         progress_per_step = 100 / (total_files * total_steps)
-        total_progress = 0  # Keep track of the total progress
 
         for index, file_path in enumerate(files):
             # Step 1: Copy file
             shutil.copy(file_path, main_path + paths['input'])
-            total_progress += progress_per_step
-            self.worker.progress.emit(total_progress)  # Emit total progress
+            self.emitProgress(progress_per_step, 'Copying file')
 
             # Step 2: Split PDF
             self.split_pdf(main_path + paths['input'])
-            total_progress += progress_per_step
-            self.worker.progress.emit(total_progress)  # Emit total progress
+            self.emitProgress(progress_per_step, 'Splitting PDF')
 
             # Step 3: Analyze documents
+            self.emitProgress(progress_per_step, 'Analyzing documents')
             self.analyze_general_documents()
-            total_progress += progress_per_step
-            self.worker.progress.emit(total_progress)  # Emit total progress
 
             # Step 4: Move to archive
+            self.emitProgress(progress_per_step, 'Moving to archive')
             self.move_to_archive(paths['input'], paths['archive_input'])
             self.move_to_archive(paths['processed'], paths['archive_processed'])
-            total_progress += progress_per_step
-            self.worker.progress.emit(total_progress)  # Emit total progress
+            
 
         self.worker.finished.emit()  # Signal that processing is complete
 
 
     
-    def emitProgress(self, progress_increment):
+    def emitProgress(self, progress_increment, status_message):
+        """
+        Emit the progress signal with the updated value and update the status label.
+
+        Parameters:
+            progress_increment (int): The amount by which the progress bar should be incremented.
+            status_message (str): The new status message to be displayed.
+
+        Returns:
+            None
+        """
         # Emit the progress signal with the updated value
         current_progress = self.progressBar.value()
         new_progress = min(current_progress + progress_increment, 100)
         self.worker.progress.emit(new_progress)
+        # Update the status label
+        self.statusLabel.setText(f'Status: {status_message}')
 
         
     @pyqtSlot(int)
     def updateProgressBar(self, value):
+        """
+        Update the progress bar with the given value.
+
+        Parameters:
+            value (int): The value to set the progress bar to.
+
+        Returns:
+            None
+        """
         self.progressBar.setValue(value)
 
     @pyqtSlot()
@@ -143,6 +217,15 @@ class PDFProcessingApp(QMainWindow):
         QMessageBox.information(self, 'Complete', 'Files have been processed.')
 
     def split_pdf(self, path):
+        """
+        Splits a PDF file into multiple pages.
+
+        Parameters:
+            path (str): The path to the directory containing the PDF files.
+
+        Returns:
+            None
+        """
         for file in os.listdir(path):
             if file.endswith(".pdf"):
                 pdf = PdfReader(path + file)
@@ -167,19 +250,23 @@ class PDFProcessingApp(QMainWindow):
         return table_data
 
     def analyze_general_documents(self):
-        for file in os.listdir(main_path + paths['processed']):
-            if file.endswith(".pdf"):
-                with open(main_path + paths['processed'] + file, "rb") as fd:
-                    document = fd.read()
-                poller = self.client.begin_analyze_document("prebuilt-document", document)
-                result = poller.result()
-                for i, table in enumerate(result.tables):
-                    df = pd.DataFrame(self.extract_table_data(table))
-                    df.columns = df.iloc[0]
-                    df = df.drop(df.index[0])
-                    df = self.replace_import_headers(df)
-                    df.to_excel(f"{main_path}{paths['output']}{os.path.splitext(file)[0]}_table_{i}.xlsx", index=False)
-
+        files = [f for f in os.listdir(main_path + paths['processed']) if f.endswith(".pdf")]
+        total_files = len(files)
+        for i, file in enumerate(files):
+            with open(main_path + paths['processed'] + file, "rb") as fd:
+                document = fd.read()
+            poller = self.client.begin_analyze_document("prebuilt-document", document)
+            result = poller.result()
+            for i, table in enumerate(result.tables):
+                df = pd.DataFrame(self.extract_table_data(table))
+                df.columns = df.iloc[0]
+                df = df.drop(df.index[0])
+                df = self.replace_import_headers(df)
+                df.to_excel(f"{main_path}{paths['output']}{os.path.splitext(file)[0]}_table_{i}.xlsx", index=False)
+            # Emit progress after each file is processed
+            progress_increment = 100 / total_files
+            self.emitProgress(progress_increment, 'Analyzing documents')
+    
     def move_to_archive(self, path, archive_path):
         for file in os.listdir(main_path + path):
             if os.path.isfile(main_path + path + file):
