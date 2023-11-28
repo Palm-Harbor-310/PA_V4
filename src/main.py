@@ -1,7 +1,7 @@
 #main.py
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget,
-    QFileDialog, QLabel, QProgressBar, QMessageBox, QGridLayout, QDesktopWidget
+    QFileDialog, QLabel, QProgressBar, QMessageBox, QGridLayout, QDesktopWidget, QComboBox
 )
 from PyQt5.QtCore import pyqtSlot, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
@@ -14,9 +14,7 @@ from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
 
 # Azure credentials and paths
-endpoint = "https://pos.cognitiveservices.azure.com/"
-key = os.getenv("AZURE_API_KEY_POS")
-credential = AzureKeyCredential(key)
+
 main_path = "C:/Users/daniel.pace/Documents/Coding/PO Automation/Azure/Purchase Orders/"
 paths = {'input': 'Input/', 'processed': 'Processed/', 'output': 'Output/', 'archive_input': 'Input/Archive/', 'archive_processed': 'Processed/Archive/'}
 
@@ -53,7 +51,7 @@ class PDFProcessingApp(QMainWindow):
         """
         super().__init__()
         self.initUI()
-        self.client = DocumentAnalysisClient(endpoint=endpoint, credential=credential)
+        
 
     def initUI(self):
         """
@@ -81,25 +79,31 @@ class PDFProcessingApp(QMainWindow):
         # Create and set layout for the central widget
         layout = QGridLayout(self.centralWidget)
 
+        # Dropdown for selecting document type
+        self.docTypeComboBox = QComboBox(self)
+        self.docTypeComboBox.addItems(['Invoice', 'Purchase Order'])
+        layout.addWidget(self.docTypeComboBox, 0, 0, 1, 2)  # Adjust grid position as needed
+
         self.statusLabel = QLabel('Status: Ready', self)
         self.statusLabel.setMaximumHeight(20)  # Set maximum height to 20 pixels
-        layout.addWidget(self.statusLabel, 0, 0, 1, 2)
+        layout.addWidget(self.statusLabel, 1, 0, 1, 2)
 
         self.progressBar = QProgressBar(self)
-        layout.addWidget(self.progressBar, 1, 0, 1, 2)
+        layout.addWidget(self.progressBar, 2, 0, 1, 2)
 
         self.importButton = QPushButton('Import Files', self)
         self.importButton.clicked.connect(self.importFiles)
         self.importButton.setMaximumWidth(100)  # Set maximum width to 100 pixels
-        layout.addWidget(self.importButton, 2, 0)
+        layout.addWidget(self.importButton, 3, 0)
 
         self.processButton = QPushButton('Process Files', self)
         self.processButton.clicked.connect(self.processFiles)
-        layout.addWidget(self.processButton, 2, 1)
+        layout.addWidget(self.processButton, 3, 1)
         
         self.exitButton = QPushButton('Exit', self)
+        self.exitButton.clicked.connect(QApplication.instance().quit)
         self.exitButton.setMaximumWidth(100)  # Set maximum width to 100 pixels, adjust as needed
-        layout.addWidget(self.exitButton, 3, 1)  # Positioned in the right column
+        layout.addWidget(self.exitButton, 4, 1)  # Positioned in the right column
 
 
     def center(self):
@@ -130,6 +134,19 @@ class PDFProcessingApp(QMainWindow):
             self.statusLabel.setText('Status: Files Imported')
     @pyqtSlot()
     def processFiles(self):
+        # Set endpoint and key based on document type selection
+        doc_type = self.docTypeComboBox.currentText()
+        if doc_type == 'Invoice':
+            endpoint = "https://phh-invoices.cognitiveservices.azure.com/"
+            key = os.getenv("AZURE_API_KEY_PHH-INVOICES")
+        else:  # Purchase Order
+            endpoint = "https://pos.cognitiveservices.azure.com/"
+            key = os.getenv("AZURE_API_KEY_POS")
+        
+        # Create the credential and client with the selected endpoint and key
+        credential = AzureKeyCredential(key)
+        self.client = DocumentAnalysisClient(endpoint=endpoint, credential=credential)
+
         if hasattr(self, 'files') and self.files:        
             self.processButton.setEnabled(False)
             self.progressBar.setValue(0)
@@ -175,7 +192,6 @@ class PDFProcessingApp(QMainWindow):
             
 
         self.worker.finished.emit()  # Signal that processing is complete
-
 
     
     def emitProgress(self, progress_increment, status_message):
