@@ -81,7 +81,7 @@ class PDFProcessingApp(QMainWindow):
 
         # Dropdown for selecting document type
         self.docTypeComboBox = QComboBox(self)
-        self.docTypeComboBox.addItems(['Invoice', 'Purchase Order'])
+        self.docTypeComboBox.addItems(['Purchase Order','Invoice'])
         layout.addWidget(self.docTypeComboBox, 0, 0, 1, 2)  # Adjust grid position as needed
 
         self.statusLabel = QLabel('Status: Ready', self)
@@ -168,14 +168,16 @@ class PDFProcessingApp(QMainWindow):
         Returns:
             None
         """
+        # Get the selected document type
         total_files = len(files)
         total_steps = 4  # Number of steps in the processing of each file
         progress_per_step = 100 / (total_files * total_steps)
 
         for index, file_path in enumerate(files):
             # Step 1: Copy file
-            shutil.copy(file_path, main_path + paths['input'])
+            
             self.emitProgress(progress_per_step, 'Copying file')
+            shutil.copy(file_path, main_path + paths['input'])
 
             # Step 2: Split PDF
             self.split_pdf(main_path + paths['input'])
@@ -295,6 +297,30 @@ class PDFProcessingApp(QMainWindow):
         df.columns = df.columns.astype(str).str.lower()
         df.rename(columns={col: replacements.get(col, col) for col in df.columns}, inplace=True)
         return df
+
+    def extract_invoice_data(self, file_path):
+        """Extract invoice data using Azure Form Recognizer"""
+        
+        errors = []
+        invoice_data = None
+        
+        try:
+            with open(file_path, "rb") as fd:
+                document = fd.read()
+
+            poller = self.client.begin_analyze_document("prebuilt-invoice", document)  
+            result = poller.result()
+            
+            invoice_data = result.documents[0].fields
+
+        except Exception as e:
+            errors.append(f"Error processing {file_path}: {e}")
+            
+        if errors:
+            self.log_errors(errors)
+            
+        return invoice_data
+
 
 def main():
     app = QApplication(sys.argv)
