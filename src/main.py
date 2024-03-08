@@ -12,6 +12,7 @@ import pandas as pd
 from PyPDF2 import PdfReader, PdfWriter
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
+import re
 
 # Azure credentials and paths
 
@@ -99,6 +100,11 @@ class PDFProcessingApp(QMainWindow):
         self.processButton = QPushButton('Process Files', self)
         self.processButton.clicked.connect(self.processFiles)
         layout.addWidget(self.processButton, 3, 1)
+
+        # Add a new button for pulling prices
+        self.pullPricesButton = QPushButton('Pull Prices', self)
+        self.pullPricesButton.clicked.connect(self.pullPrices)
+        layout.addWidget(self.pullPricesButton, 4, 0)
         
         self.exitButton = QPushButton('Exit', self)
         self.exitButton.clicked.connect(QApplication.instance().quit)
@@ -291,11 +297,36 @@ class PDFProcessingApp(QMainWindow):
                 shutil.move(main_path + path + file, main_path + archive_path + file)
 
     def replace_import_headers(self, df):
-        replacements = {k: v for k, v in zip(
-            ["order", "items", "quantity", "qty", "deacom#", "deacom", "deacom #", "deacom  #", "cost", "unit price", "price", "#"], 
-            ["pu_quant"] * 4 + ["pr_codenum"] * 4 + ["pu_price"] * 4)}
+        # Lowercase column names for uniformity
         df.columns = df.columns.astype(str).str.lower()
+
+        # Initially handle 'amount' specifically
+        if 'amount' in df.columns:
+            index = df.columns.tolist().index('amount')
+            if index == 0:
+                df.rename(columns={'amount': 'quantity'}, inplace=True)
+            elif index == len(df.columns) - 1:
+                df.rename(columns={'amount': 'total'}, inplace=True)
+
+        # Define replacements after handling 'amount'
+        replacements = {k: v for k, v in zip(
+            ["order", "items", "quantity", "qty", "cost", "unit price", "price", "#"], 
+            ["pu_quant"] * 4 + ["pu_price"] * 4)}
+
+        # Apply the replacements for other headers
         df.rename(columns={col: replacements.get(col, col) for col in df.columns}, inplace=True)
+
+        # Part number identification and renaming
+        part_number_column = None
+        part_number_pattern = re.compile(r'P\d{2}-\d{3}-\d{3}')
+        for column in df.columns:
+            if df[column].astype(str).str.match(part_number_pattern).any():
+                part_number_column = column
+                break
+
+        if part_number_column:
+            df.rename(columns={part_number_column: 'pr_codenum'}, inplace=True)
+
         return df
 
     def extract_invoice_data(self, file_path):
@@ -320,6 +351,51 @@ class PDFProcessingApp(QMainWindow):
             self.log_errors(errors)
             
         return invoice_data
+
+    @pyqtSlot()
+    def pullPrices(self):
+        """
+        Slot method to handle the 'Pull Prices' button click.
+        """
+        try:
+            self.pullPricesFromExcel()
+            QMessageBox.information(self, 'Success', 'Prices have been pulled successfully.')
+        except Exception as e:
+            QMessageBox.warning(self, 'Error', f'An error occurred: {e}')
+
+
+
+    def pullPricesFromExcel(self):
+        """
+        Method to pull prices from Excel files in a folder and process them.
+
+        Args:
+        folder_path (str): Path to the folder containing Excel files.
+        """
+        folder_path = "P:/Temp"
+        # Get a list of all Excel files in the folder
+        excel_files = [f for f in os.listdir(folder_path) if f.endswith(".xlsx")]
+        for file in excel_files:
+            try:
+                # Construct full path to the current file
+                file_path = os.path.join(folder_path, file)
+
+                # Read the current Excel file
+                original_df = pd.read_excel(file_path, engine='openpyxl')
+
+                # Load the LPC Excel file
+                lpc_df = pd.read_excel(
+                    r"C:\Users\daniel.pace\Documents\Coding\Purchasing Automation\PA_V4\Price Comparison\Last Part Cost 3.1.xlsx",
+                    sheet_name='All')
+                
+                # Map PO Cost from LPC to original dataframe based on part numbers
+                original_df = original_df.merge(lpc_df[['pr_codenum', 'PO Cost']], on='pr_codenum', how='left')
+
+                # Save the processed data to a new file with the original filename
+                original_df.to_excel(os.path.join(folder_path, f"processed_{file}"), index=False)
+            except Exception as e:
+                print(f"Error processing {file}: {e}")
+                continue
 
 
 def main():
