@@ -1,7 +1,7 @@
 #main.py
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget,
-    QFileDialog, QLabel, QProgressBar, QMessageBox, QGridLayout, QDesktopWidget, QComboBox
+    QFileDialog, QLabel, QMessageBox, QGridLayout, QDesktopWidget, QComboBox
 )
 from PyQt5.QtCore import pyqtSlot, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
@@ -13,7 +13,7 @@ from PyPDF2 import PdfReader, PdfWriter
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
 import re
-
+import win32com.client
 # Azure credentials and paths
 
 main_path = "C:/Users/daniel.pace/Documents/Coding/PO Automation/Azure/Purchase Orders/"
@@ -43,7 +43,7 @@ class WorkerThread(QThread):
     def run(self):
         self.func(*self.args, **self.kwargs)
         self.finished.emit()
-
+        
 # Main Application Window
 class PDFProcessingApp(QMainWindow):
     def __init__(self):
@@ -70,7 +70,7 @@ class PDFProcessingApp(QMainWindow):
         """
         self.setWindowIcon(QIcon('icons\\appIcon.png'))
         self.setWindowTitle('PDF Processing App')
-        self.setGeometry(300, 300, 600, 200)
+        self.setGeometry(300, 300, 400, 200)
         self.center()
 
         # Create a central widget to hold other widgets
@@ -83,14 +83,13 @@ class PDFProcessingApp(QMainWindow):
         # Dropdown for selecting document type
         self.docTypeComboBox = QComboBox(self)
         self.docTypeComboBox.addItems(['Purchase Order','Invoice'])
-        layout.addWidget(self.docTypeComboBox, 0, 0, 1, 2)  # Adjust grid position as needed
+        layout.addWidget(self.docTypeComboBox, 0, 0, 1, 1)  # Adjust grid position as needed
 
         self.statusLabel = QLabel('Status: Ready', self)
         self.statusLabel.setMaximumHeight(20)  # Set maximum height to 20 pixels
-        layout.addWidget(self.statusLabel, 1, 0, 1, 2)
+        layout.addWidget(self.statusLabel, 0, 1)
 
-        self.progressBar = QProgressBar(self)
-        layout.addWidget(self.progressBar, 2, 0, 1, 2)
+        
 
         self.importButton = QPushButton('Import Files', self)
         self.importButton.clicked.connect(self.importFiles)
@@ -104,13 +103,16 @@ class PDFProcessingApp(QMainWindow):
         # Add a new button for pulling prices
         self.pullPricesButton = QPushButton('Pull Prices', self)
         self.pullPricesButton.clicked.connect(self.pullPrices)
-        layout.addWidget(self.pullPricesButton, 4, 0)
+        layout.addWidget(self.pullPricesButton, 4, 1)
         
         self.exitButton = QPushButton('Exit', self)
         self.exitButton.clicked.connect(QApplication.instance().quit)
         self.exitButton.setMaximumWidth(100)  # Set maximum width to 100 pixels, adjust as needed
-        layout.addWidget(self.exitButton, 4, 1)  # Positioned in the right column
+        layout.addWidget(self.exitButton, 5, 1)  # Positioned in the right column
 
+        self.runVbaButton = QPushButton('Batch Clean', self)
+        self.runVbaButton.clicked.connect(self.runVbaMacro)
+        layout.addWidget(self.runVbaButton, 4, 0)
 
     def center(self):
         qr = self.frameGeometry()
@@ -155,10 +157,10 @@ class PDFProcessingApp(QMainWindow):
 
         if hasattr(self, 'files') and self.files:        
             self.processButton.setEnabled(False)
-            self.progressBar.setValue(0)
+            
             self.statusLabel.setText('Status: Processing...')
             self.worker = WorkerThread(self.processPDFs, self.files)
-            self.worker.progress.connect(self.updateProgressBar)  # Connect progress signal to updateProgressBar slot
+            
             self.worker.finished.connect(self.onProcessingComplete)  # Connect finished signal to onProcessingComplete slot
             self.worker.start()
         else:
@@ -174,91 +176,60 @@ class PDFProcessingApp(QMainWindow):
         Returns:
             None
         """
-        # Get the selected document type
-        total_files = len(files)
-        total_steps = 4  # Number of steps in the processing of each file
-        progress_per_step = 100 / (total_files * total_steps)
-
         for index, file_path in enumerate(files):
-            # Step 1: Copy file
-            
-            self.emitProgress(progress_per_step, 'Copying file')
-            shutil.copy(file_path, main_path + paths['input'])
+            # Extract filename for use in paths
+            filename = os.path.basename(file_path)
+
+            # Step 1: Copy file to the 'input' directory
+            shutil.copy(file_path, os.path.join(main_path, paths['input'], filename))
 
             # Step 2: Split PDF
-            self.split_pdf(main_path + paths['input'])
-            self.emitProgress(progress_per_step, 'Splitting PDF')
+            # Note: split_pdf now takes a single file path, not a directory
+            self.split_pdf(os.path.join(main_path, paths['input'], filename))
 
             # Step 3: Analyze documents
-            self.emitProgress(progress_per_step, 'Analyzing documents')
+            # analyze_general_documents now processes files directly from the 'processed' directory
             self.analyze_general_documents()
 
-            # Step 4: Move to archive
-            self.emitProgress(progress_per_step, 'Moving to archive')
-            self.move_to_archive(paths['input'], paths['archive_input'])
-            self.move_to_archive(paths['processed'], paths['archive_processed'])
-            
+            # Step 4: Move original file to 'archive_input'
+            shutil.move(os.path.join(main_path, paths['input'], filename), os.path.join(main_path, paths['archive_input'], filename))
 
-        self.worker.finished.emit()  # Signal that processing is complete
-
+            # Move processed files to 'archive_processed'
+            # This is done inside analyze_general_documents to ensure only processed files are moved
     
-    def emitProgress(self, progress_increment, status_message):
-        """
-        Emit the progress signal with the updated value and update the status label.
-
-        Parameters:
-            progress_increment (int): The amount by which the progress bar should be incremented.
-            status_message (str): The new status message to be displayed.
-
-        Returns:
-            None
-        """
-        # Emit the progress signal with the updated value
-        current_progress = self.progressBar.value()
-        new_progress = min(current_progress + progress_increment, 100)
-        self.worker.progress.emit(new_progress)
-        # Update the status label
-        self.statusLabel.setText(f'Status: {status_message}')
-
-        
-    @pyqtSlot(int)
-    def updateProgressBar(self, value):
-        """
-        Update the progress bar with the given value.
-
-        Parameters:
-            value (int): The value to set the progress bar to.
-
-        Returns:
-            None
-        """
-        self.progressBar.setValue(value)
-
     @pyqtSlot()
     def onProcessingComplete(self):
         self.processButton.setEnabled(True)
         self.statusLabel.setText('Status: Complete')
         QMessageBox.information(self, 'Complete', 'Files have been processed.')
 
-    def split_pdf(self, path):
-        """
-        Splits a PDF file into multiple pages.
+    def split_pdf(self, file_path):
+        """        Splits a PDF file into multiple pages.
 
         Parameters:
-            path (str): The path to the directory containing the PDF files.
+            file_path (str): The path to the PDF file to be split.
 
         Returns:
             None
         """
-        for file in os.listdir(path):
-            if file.endswith(".pdf"):
-                pdf = PdfReader(path + file)
-                for i, page in enumerate(pdf.pages):
-                    pdf_writer = PdfWriter()
-                    pdf_writer.add_page(page)
-                    output_filename = f"{paths['processed']}{file[:-4]}_{i + 1}.pdf"
-                    with open(main_path + output_filename, 'wb') as out:
-                        pdf_writer.write(out)
+        # Ensure the path points to a file
+        if not file_path.endswith(".pdf"):
+            print(f"Error: {file_path} is not a PDF file.")
+            return
+
+        # Initialize PdfReader with the provided file path
+        pdf = PdfReader(file_path)
+        for i, page in enumerate(pdf.pages):
+            pdf_writer = PdfWriter()
+            pdf_writer.add_page(page)
+
+            # Construct output filename for each page
+            output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_{i + 1}.pdf"
+            output_filepath = os.path.join(main_path, paths['processed'], output_filename)
+
+            # Write out each page as a separate PDF
+            with open(output_filepath, 'wb') as out:
+                pdf_writer.write(out)
 
     def extract_table_data(self, table):
         table_data = []
@@ -275,7 +246,7 @@ class PDFProcessingApp(QMainWindow):
 
     def analyze_general_documents(self):
         files = [f for f in os.listdir(main_path + paths['processed']) if f.endswith(".pdf")]
-        total_files = len(files)
+        
         for i, file in enumerate(files):
             with open(main_path + paths['processed'] + file, "rb") as fd:
                 document = fd.read()
@@ -287,10 +258,7 @@ class PDFProcessingApp(QMainWindow):
                 df = df.drop(df.index[0])
                 df = self.replace_import_headers(df)
                 df.to_excel(f"{main_path}{paths['output']}{os.path.splitext(file)[0]}_table_{i}.xlsx", index=False)
-            # Emit progress after each file is processed
-            progress_increment = 100 / total_files
-            self.emitProgress(progress_increment, 'Analyzing documents')
-    
+            
     def move_to_archive(self, path, archive_path):
         for file in os.listdir(main_path + path):
             if os.path.isfile(main_path + path + file):
@@ -363,8 +331,6 @@ class PDFProcessingApp(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, 'Error', f'An error occurred: {e}')
 
-
-
     def pullPricesFromExcel(self):
         """
         Method to pull prices from Excel files in a folder and process them.
@@ -397,6 +363,32 @@ class PDFProcessingApp(QMainWindow):
                 print(f"Error processing {file}: {e}")
                 continue
 
+    def runVbaMacro(self):
+        excel = None  # Initialize excel variable to ensure it's in scope for the finally block
+        try:
+            excel = win32com.client.Dispatch('Excel.Application')  # Using late binding
+            excel.Visible = True  # Set to False if you don't want Excel to be visible
+
+            # Open PERSONAL workbook
+            personal_wb_path = r"C:\Users\daniel.pace\AppData\Roaming\Microsoft\Excel\XLSTART\PERSONALwb.XLSB"
+            excel.Workbooks.Open(personal_wb_path)
+
+            # Load the add-in if it's not already loaded
+            addin_path = r"C:\Users\daniel.pace\AppData\Roaming\Microsoft\AddIns\CustomMacros.xlam"
+            if addin_path not in [x.FullName for x in excel.AddIns]:
+                excel.Workbooks.Open(addin_path)
+
+            # Run the macro
+            macro_name = "CustomMacros.xlam!batchClean"  # Make sure the macro name is correct
+            excel.Application.Run(macro_name)
+
+        except Exception as e:
+            QMessageBox.warning(self, 'Error', f'An error occurred while running the macro: {e}')
+
+        finally:
+            # Clean up
+            if excel is not None:  # Check if 'excel' is defined before attempting to quit
+                excel.Quit()
 
 def main():
     app = QApplication(sys.argv)
