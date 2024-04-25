@@ -269,8 +269,13 @@ class PDFProcessingApp(QMainWindow):
 
     def replace_import_headers(self, df):
         try:
-            # Lowercase column names for uniformity
+            
             df.columns = df.columns.astype(str).str.lower()
+
+            # Check if any of the target words are present in the header row
+            target_words = ["order", "items", "quantity", "qty", "cost", "unit price", "price", "#", "amount"]
+            if not any(word in df.columns for word in target_words):
+                return df  # Skip replacements if no target words are found
 
             # Initially handle 'amount' specifically
             if 'amount' in df.columns:
@@ -289,15 +294,17 @@ class PDFProcessingApp(QMainWindow):
             df.rename(columns={col: replacements.get(col, col) for col in df.columns}, inplace=True)
 
             # Part number identification and renaming
-            part_number_column = None
+            part_number_column_index = None
             part_number_pattern = re.compile(r'P\d{2}-\d{3}-\d{3}')
-            for column in df.columns:
+            for index, column in enumerate(df.columns):
+                # Check if any cell in the column matches the part number pattern
                 if df[column].astype(str).str.match(part_number_pattern).any():
-                    part_number_column = column
+                    part_number_column_index = index
                     break
 
-            if part_number_column:
-                df.rename(columns={part_number_column: 'pr_codenum'}, inplace=True)
+            if part_number_column_index is not None:
+                # Directly set the column name in the DataFrame's columns attribute
+                df.columns.values[part_number_column_index] = 'pr_codenum'
 
         except Exception as e:
             print(f"Error occurred while replacing import headers: {e}")
