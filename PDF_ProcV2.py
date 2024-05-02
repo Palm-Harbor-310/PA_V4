@@ -1,22 +1,23 @@
 #PDF_Proc.py
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget,
-    QFileDialog, QLabel, QMessageBox, QGridLayout, QDesktopWidget, QComboBox
+    QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QCheckBox,
+    QFileDialog, QLabel, QMessageBox, QGridLayout, QDesktopWidget, QComboBox, QHBoxLayout, QSpacerItem, QSizePolicy,
 )
-from PyQt5.QtCore import pyqtSlot, QThread, pyqtSignal
+from PyQt5.QtCore import pyqtSlot, QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QIcon
 import sys
 import os
 import shutil
 import pandas as pd
 from PyPDF2 import PdfReader, PdfWriter
-from azure.ai.formrecognizer import DocumentAnalysisClient
+from azure.ai.formrecognizer import DocumentAnalysisClient, DocumentField
 from azure.core.credentials import AzureKeyCredential
 import re
 import win32com.client
 # Azure credentials and paths
 
-main_path = "C:/Users/daniel.pace/Documents/Coding/PO Automation/Azure/Purchase Orders/"
+base_path = "C:/Users/daniel.pace/Documents/Coding/PO Automation/Azure/"
+doc_path = ""
 paths = {'input': 'Input/', 'processed': 'Processed/', 'output': 'Output/', 'archive_input': 'Input/Archive/', 'archive_processed': 'Processed/Archive/'}
 
 # Worker thread
@@ -52,7 +53,7 @@ class PDFProcessingApp(QMainWindow):
         """
         super().__init__()
         self.initUI()
-        
+        self.runningThreads = []
 
     def initUI(self):
         """
@@ -60,7 +61,7 @@ class PDFProcessingApp(QMainWindow):
 
         This function sets the window title, geometry, and centers the window on the screen.
         It also creates a central widget to hold other widgets and sets its layout.
-        The function adds a status label, a progress bar, and two buttons to the layout.
+        The function adds a status label, a progress bar, and buttons to the layout.
 
         Parameters:
         - self: The instance of the class.
@@ -70,7 +71,7 @@ class PDFProcessingApp(QMainWindow):
         """
         self.setWindowIcon(QIcon('icons\\appIcon.png'))
         self.setWindowTitle('PDF Processing App')
-        self.setGeometry(300, 300, 400, 200)
+        self.setGeometry(300, 300, 500, 300)  # Increase window size for better layout
         self.center()
 
         # Create a central widget to hold other widgets
@@ -78,48 +79,65 @@ class PDFProcessingApp(QMainWindow):
         self.setCentralWidget(self.centralWidget)
 
         # Create and set layout for the central widget
-        layout = QGridLayout(self.centralWidget)
+        layout = QVBoxLayout(self.centralWidget)  # Use QVBoxLayout for vertical arrangement
+
+        # Create a top layout for status and document type
+        topLayout = QHBoxLayout()
 
         # Dropdown for selecting document type
         self.docTypeComboBox = QComboBox(self)
-        self.docTypeComboBox.addItems(['Purchase Order','Invoice'])
-        layout.addWidget(self.docTypeComboBox, 0, 0, 1, 1)  # Adjust grid position as needed
-
-        self.statusLabel = QLabel('Status: Ready', self)
-        self.statusLabel.setMaximumHeight(20)  # Set maximum height to 20 pixels
-        layout.addWidget(self.statusLabel, 0, 1)
+        self.docTypeComboBox.addItems(['Purchase Order', 'Invoice'])
+        self.docTypeComboBox.setFixedWidth(150)  # Set a fixed width for the combo box
+        topLayout.addWidget(self.docTypeComboBox)
 
         
+        # Add spacer to push status label to the right
+        spacer = QSpacerItem(20, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        topLayout.addItem(spacer)
+
+        self.multiPageCheckbox = QCheckBox("Multi-page Invoice", self)
+        layout.addWidget(self.multiPageCheckbox)  # Add the checkbox to the main layout
+
+        self.statusLabel = QLabel('Status: Ready', self)
+        self.statusLabel.setStyleSheet("QLabel { color: green; font-weight: bold; }")  # Add styling to status label
+        topLayout.addWidget(self.statusLabel)
+
+        layout.addLayout(topLayout)  # Add top layout to the main layout
+
+        # Create a grid layout for buttons
+        buttonLayout = QGridLayout()
 
         self.importButton = QPushButton('Import Files', self)
         self.importButton.clicked.connect(self.importFiles)
-        self.importButton.setMaximumWidth(100)  # Set maximum width to 100 pixels
-        layout.addWidget(self.importButton, 3, 0)
+        buttonLayout.addWidget(self.importButton, 0, 0)
 
         self.processButton = QPushButton('Process Files', self)
         self.processButton.clicked.connect(self.processFiles)
-        layout.addWidget(self.processButton, 3, 1)
+        buttonLayout.addWidget(self.processButton, 0, 1)
 
-        # Add a new button for pulling prices
         self.pullPricesButton = QPushButton('Pull Prices', self)
         self.pullPricesButton.clicked.connect(self.pullPrices)
-        layout.addWidget(self.pullPricesButton, 4, 1)
-        
-        self.exitButton = QPushButton('Exit', self)
-        self.exitButton.clicked.connect(QApplication.instance().quit)
-        self.exitButton.setMaximumWidth(100)  # Set maximum width to 100 pixels, adjust as needed
-        layout.addWidget(self.exitButton, 5, 1)  # Positioned in the right column
+        buttonLayout.addWidget(self.pullPricesButton, 1, 1)
 
         self.runVbaButton = QPushButton('Batch Clean', self)
         self.runVbaButton.clicked.connect(self.runVbaMacro)
-        layout.addWidget(self.runVbaButton, 4, 0)
+        buttonLayout.addWidget(self.runVbaButton, 1, 0)
+
+        layout.addLayout(buttonLayout)  # Add button layout to the main layout
+
+        # Add spacer to push exit button to the bottom
+        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        layout.addItem(spacer)
+
+        self.exitButton = QPushButton('Exit', self)
+        self.exitButton.clicked.connect(QApplication.instance().quit)
+        layout.addWidget(self.exitButton, alignment=Qt.AlignRight)  # Align exit button to the right
 
     def center(self):
         qr = self.frameGeometry()
         cp = QDesktopWidget().availableGeometry().center()
         qr.moveCenter(cp)
         self.move(qr.topLeft())
-
     @pyqtSlot()
     def importFiles(self):
         """
@@ -146,68 +164,95 @@ class PDFProcessingApp(QMainWindow):
         doc_type = self.docTypeComboBox.currentText()
         if doc_type == 'Invoice':
             endpoint = "https://phh-invoices.cognitiveservices.azure.com/"
+            doc_path = base_path + "Invoices/"
             key = os.getenv("AZURE_API_KEY_PHH-INVOICES")
         else:  # Purchase Order
             endpoint = "https://pos.cognitiveservices.azure.com/"
             key = os.getenv("AZURE_API_KEY_POS")
+            doc_path = base_path + "Purchase Orders/"
+
+        paths = {
+            'input': doc_path + 'Input/', 
+            'processed': doc_path + 'Processed/', 
+            'output': doc_path + 'Output/', 
+            'archive_input': doc_path + 'Input/Archive/', 
+            'archive_processed': doc_path + 'Processed/Archive/'
+        }
         
         # Create the credential and client with the selected endpoint and key
         credential = AzureKeyCredential(key)
         self.client = DocumentAnalysisClient(endpoint=endpoint, credential=credential)
 
-        if hasattr(self, 'files') and self.files:        
+        if hasattr(self, 'files') and self.files:
             self.processButton.setEnabled(False)
-            
             self.statusLabel.setText('Status: Processing...')
-            self.worker = WorkerThread(self.processPDFs, self.files)
             
-            self.worker.finished.connect(self.onProcessingComplete)  # Connect finished signal to onProcessingComplete slot
+            multi_page = self.multiPageCheckbox.isChecked()  # Check the state of the checkbox
+            self.worker = WorkerThread(self.processPDFs, self.files, paths, multi_page)
+            self.worker.finished.connect(self.onProcessingComplete)
             self.worker.start()
+            self.runningThreads.append(self.worker)  # Keep track of the thread
         else:
             QMessageBox.warning(self, 'Warning', 'No files have been imported.')
 
-    def processPDFs(self, files):
+
+    def onWorkerFinished(self, worker):
+        self.runningThreads.remove(worker)  
+
+
+    def processPDFs(self, files, paths, multi_page):
         """
-        Process a list of PDF files.
+        Process a list of PDF files based on the document type.
 
         Args:
             files (list): A list of file paths to the PDF files.
+            paths (dict): A dictionary containing the paths for input, processed, output, and archive directories.
 
         Returns:
             None
         """
+        doc_type = self.docTypeComboBox.currentText()
+
         for file_path in files:
             # Extract filename for use in paths
             filename = os.path.basename(file_path)
 
             # Step 1: Copy file to the 'input' directory
-            shutil.copy(file_path, os.path.join(main_path, paths['input'], filename))
+            shutil.copy(file_path, os.path.join(paths['input'], filename))
 
             # Step 2: Split PDF
             # Note: split_pdf now takes a single file path, not a directory
-            self.split_pdf(os.path.join(main_path, paths['input'], filename))
+            self.split_pdf(os.path.join(paths['input'], filename), paths)
 
-            # Step 3: Analyze documents
-            # analyze_general_documents now processes files directly from the 'processed' directory
-            self.analyze_general_documents()
+            # Step 3: Analyze documents based on the document type
+            if doc_type == 'Invoice':
+                self.process_invoices(paths, multi_page)
+            elif doc_type == 'Purchase Order':
+                self.analyze_general_documents(paths)
 
             # Step 4: Move original file to 'archive_input'
-            shutil.move(os.path.join(main_path, paths['input'], filename), os.path.join(main_path, paths['archive_input'], filename))
+            shutil.move(os.path.join(paths['input'], filename), os.path.join(paths['archive_input'], filename))
 
-            # Move processed files to 'archive_processed'
-            # This is done inside analyze_general_documents to ensure only processed files are moved
+            # Note: Moving processed files to 'archive_processed' should be handled within the respective processing functions
+
     
     @pyqtSlot()
     def onProcessingComplete(self):
         self.processButton.setEnabled(True)
         self.statusLabel.setText('Status: Complete')
         QMessageBox.information(self, 'Complete', 'Files have been processed.')
+        # Assuming you know which thread called this, you can remove it from the list:
+        self.runningThreads.remove(self.worker)
+        self.worker = None  # Remove reference to the worker
 
-    def split_pdf(self, file_path):
-        """        Splits a PDF file into multiple pages.
+
+    def split_pdf(self, file_path, paths):
+        """
+        Splits a PDF file into multiple pages.
 
         Parameters:
             file_path (str): The path to the PDF file to be split.
+            paths (dict): A dictionary containing the paths for processed files.
 
         Returns:
             None
@@ -225,7 +270,7 @@ class PDFProcessingApp(QMainWindow):
 
             # Construct output filename for each page
             output_filename = f"{os.path.splitext(os.path.basename(file_path))[0]}_{i + 1}.pdf"
-            output_filepath = os.path.join(main_path, paths['processed'], output_filename)
+            output_filepath = os.path.join(paths['processed'], output_filename)
 
             # Write out each page as a separate PDF
             with open(output_filepath, 'wb') as out:
@@ -267,29 +312,86 @@ class PDFProcessingApp(QMainWindow):
             
         return invoice_data
 
-    def analyze_general_documents(self):
-        files = [f for f in os.listdir(main_path + paths['processed']) if f.endswith(".pdf")]
+    def invoice_dfs(self,invoice_data_list):
+        """Convert extracted invoice data into DataFrames"""
         
-        for i, file in enumerate(files):
-            with open(main_path + paths['processed'] + file, "rb") as fd:
+        all_data_dfs = []
+        line_items_dfs = []
+
+        for invoice_data in invoice_data_list:
+            
+            all_data = {key: value.value if isinstance(value, DocumentField) else value
+                        for key, value in invoice_data.items() if key != 'Items'}
+                        
+            all_data_df = pd.DataFrame([all_data])
+            all_data_dfs.append(all_data_df)
+                
+            line_items = []
+            for item in invoice_data['Items'].value:
+                line_item = {key: value.value if isinstance(value, DocumentField) else value
+                            for key, value in item.value.items()}
+                line_items.append(line_item)
+                    
+            line_items_df = pd.DataFrame(line_items)
+            line_items_df.index = range(1, len(line_items_df) + 1)
+            line_items_dfs.append(line_items_df)
+
+        return all_data_dfs, line_items_dfs
+    
+    def process_invoices(self, paths, multi_page):
+        files = [f for f in os.listdir(paths['processed']) if f.endswith(".pdf")]
+        all_line_items_df = pd.DataFrame()
+        for file in files:
+            file_path = os.path.join(paths['processed'], file)
+            
+            invoice_data = self.extract_invoice_data(file_path)
+            if invoice_data:
+                all_data_dfs, line_items_dfs = self.invoice_dfs([invoice_data])
+
+                for all_data_df, line_items_df in zip(all_data_dfs, line_items_dfs):
+                    self.save_document_output(all_data_df, line_items_df, os.path.splitext(os.path.basename(file_path))[0], 'Invoice', paths)
+
+                if multi_page:
+                    # Aggregate line items across all files if multi-page is checked
+                    all_line_items_df = pd.concat([all_line_items_df] + line_items_dfs, ignore_index=True)
+
+        if multi_page:
+            # Save aggregated line item data only if multi-page is checked
+            self.save_aggregated_output(all_line_items_df, 'invoices', paths, os.path.splitext(os.path.basename(file_path))[0])
+
+        # Move files to archive_processed
+        for file in files:
+            file_path = os.path.join(paths['processed'], file)
+            shutil.move(file_path, os.path.join(paths['archive_processed'], file))
+
+
+    def analyze_general_documents(self, paths):
+        """
+        Analyze general documents such as purchase orders.
+
+        Args:
+            paths (dict): A dictionary containing the paths for input, processed, output, and archive directories.
+        """
+        files = [f for f in os.listdir(paths['processed']) if f.endswith(".pdf")]
+        
+        for file in files:
+            file_path = os.path.join(paths['processed'], file)
+            with open(file_path, "rb") as fd:
                 document = fd.read()
             poller = self.client.begin_analyze_document("prebuilt-document", document)
             result = poller.result()
             for i, table in enumerate(result.tables):
                 df = pd.DataFrame(self.extract_table_data(table))
-                df.columns = df.iloc[0]
-                df = df.drop(df.index[0])
-                df = self.replace_import_headers(df)
-                df.to_excel(f"{main_path}{paths['output']}{os.path.splitext(file)[0]}_table_{i}.xlsx", index=False)
-                shutil.move(os.path.join(main_path, paths['processed'], file), os.path.join(main_path, paths['archive_processed'], file))
-                # Move processed file to '/processed/Archive' after processing
-        
+                df.columns = df.iloc[0]  # Use the first row as column headers
+                df = df.drop(df.index[0])  # Drop the first row now that headers are set
+                df = self.replace_import_headers(df)  # Optionally replace headers based on your logic
+                df.to_excel(os.path.join(paths['output'], f"{os.path.splitext(file)[0]}_table_{i}.xlsx"), index=False)
             
+            shutil.move(file_path, os.path.join(paths['archive_processed'], file))
     def move_to_archive(self, path, archive_path):
-        for file in os.listdir(main_path + path):
-            if os.path.isfile(main_path + path + file):
-                shutil.move(main_path + path + file, main_path + archive_path + file)
-
+        for file in os.listdir(base_path + path):
+            if os.path.isfile(base_path + path + file):
+                shutil.move(base_path + path + file, base_path + archive_path + file)
     def replace_import_headers(self, df):
         try:
             
@@ -335,9 +437,6 @@ class PDFProcessingApp(QMainWindow):
             return df  # Return the dataframe even if an error occurs to not interrupt the flow
 
         return df
-
-    
-
     @pyqtSlot()
     def pullPrices(self):
         """
@@ -348,7 +447,6 @@ class PDFProcessingApp(QMainWindow):
             QMessageBox.information(self, 'Success', 'Prices have been pulled successfully.')
         except Exception as e:
             QMessageBox.warning(self, 'Error', f'An error occurred: {e}')
-
     def pullPricesFromExcel(self):
         """
         Method to pull prices from Excel files in a folder and process them.
@@ -380,7 +478,6 @@ class PDFProcessingApp(QMainWindow):
             except Exception as e:
                 print(f"Error processing {file}: {e}")
                 continue
-
     def runVbaMacro(self):
         excel = None  # Initialize excel variable to ensure it's in scope for the finally block
         try:
@@ -403,10 +500,32 @@ class PDFProcessingApp(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, 'Error', f'An error occurred while running the macro: {e}')
 
-        finally:
-            # Clean up
-            if excel is not None:  # Check if 'excel' is defined before attempting to quit
-                excel.Quit()
+        
+    def save_document_output(self, all_data_df, line_items_df, file_name, doc_type, paths):
+        output_dir = paths['output']
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        output_file_path = os.path.join(output_dir, f'{file_name}.xlsx')
+        with pd.ExcelWriter(output_file_path, engine='xlsxwriter') as writer:
+            all_data_df.to_excel(writer, sheet_name=f'{doc_type} Details', index=False)
+            line_items_df.to_excel(writer, sheet_name='Line Items', index=True)  # Keeping index=True since you want the index to start from 1
+
+    def save_aggregated_output(self, dataframe, data_type, paths, file_name):
+        output_dir = paths['output']
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        output_file_path = os.path.join(output_dir, f'{file_name}_aggregated.xlsx')
+        with pd.ExcelWriter(output_file_path, engine='xlsxwriter') as writer:
+            dataframe.to_excel(writer, sheet_name=f'Aggregated {data_type.capitalize()}')
+
+    def closeEvent(self, event):
+        for worker in self.runningThreads:
+            worker.wait()  # Wait for the thread to finish
+        event.accept()  # Now it's safe to close
+        
+
 
 def main():
     app = QApplication(sys.argv)
