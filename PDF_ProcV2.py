@@ -486,7 +486,7 @@ class PDFProcessingApp(QMainWindow):
 
             # Open PERSONAL workbook
             personal_wb_path = r"C:\Users\daniel.pace\AppData\Roaming\Microsoft\Excel\XLSTART\PERSONALwb.XLSB"
-            excel.Workbooks.Open(personal_wb_path)
+            personal_wb = excel.Workbooks.Open(personal_wb_path)
 
             # Load the add-in if it's not already loaded
             addin_path = r"C:\Users\daniel.pace\AppData\Roaming\Microsoft\AddIns\CustomMacros.xlam"
@@ -499,6 +499,11 @@ class PDFProcessingApp(QMainWindow):
 
         except Exception as e:
             QMessageBox.warning(self, 'Error', f'An error occurred while running the macro: {e}')
+        finally:
+            if excel is not None:
+                personal_wb.Close(False)  # Close the PERSONAL workbook without saving changes
+                excel.Quit()  # Close the Excel application
+                del excel  # Ensure Excel process is terminated
 
         
     def save_document_output(self, all_data_df, line_items_df, file_name, doc_type, paths):
