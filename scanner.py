@@ -67,7 +67,4 @@ def scan_to_pdf(output_pdf_path, device_id):
         print("No device selected")
 
 # Example usage
-from datetime import datetime
-output_pdf = f'C:\\Users\\daniel.pace\\Documents\\Coding\\PO Automation\\Azure\\Purchase Orders\\Start\\scanned_batch_{date}.pdf'
-device_id = '{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}\\0000'  
-scan_to_pdf(output_pdf, device_id)
+

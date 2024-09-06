@@ -1,7 +1,7 @@
 #PDF_Proc.py
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget, QCheckBox,
-    QFileDialog, QLabel, QMessageBox, QGridLayout, QDesktopWidget, QComboBox, QHBoxLayout, QSpacerItem, QSizePolicy,
+    QFileDialog, QLabel, QMessageBox, QGridLayout, QDesktopWidget, QComboBox, QHBoxLayout, QSpacerItem, QSizePolicy, QTabWidget
 )
 from PyQt5.QtCore import pyqtSlot, QThread, pyqtSignal, Qt
 from PyQt5.QtGui import QIcon
@@ -28,9 +28,14 @@ spec.loader.exec_module(scanner_module)
 # Azure credentials and paths
 
 base_path = "C:/Users/daniel.pace/Documents/Coding/PO Automation/Azure/"
-doc_path = ""
-paths = {'input': 'Input/', 'processed': 'Processed/', 'output': 'Output/', 'archive_input': 'Input/Archive/', 'archive_processed': 'Processed/Archive/'}
 
+paths = {
+    'input': os.path.join(base_path, 'Input/'),
+    'processed': os.path.join(base_path, 'Processed/'),
+    'output': os.path.join(base_path, 'Output/'),
+    'archive_input': os.path.join(base_path, 'Input/Archive/'),
+    'archive_processed': os.path.join(base_path, 'Processed/Archive/')
+}
 # Worker thread
 class WorkerThread(QThread):
     finished = pyqtSignal()
@@ -89,61 +94,43 @@ class PDFProcessingApp(QMainWindow):
         self.centralWidget = QWidget(self)
         self.setCentralWidget(self.centralWidget)
 
-        # Create and set layout for the central widget
-        layout = QVBoxLayout(self.centralWidget)  # Use QVBoxLayout for vertical arrangement
+        # Create a tab widget to hold the Purchase Order and Invoice tabs
+        self.tabWidget = QTabWidget(self.centralWidget)
+
+        # Create tabs
+        self.purchaseOrderTab = QWidget()
+        self.invoiceTab = QWidget()
+
+        # Add tabs to the tab widget
+        self.tabWidget.addTab(self.purchaseOrderTab, "Purchase Orders")
+        self.tabWidget.addTab(self.invoiceTab, "Invoices")
+
+        # Set up layouts for each tab
+        self.initPurchaseOrderTab()
+        self.initInvoiceTab()
+
+        # Add the tab widget to the central layout
+        layout = QVBoxLayout(self.centralWidget)
+        layout.addWidget(self.tabWidget)
 
         # Create a top layout for status and document type
         topLayout = QHBoxLayout()
 
-        # Dropdown for selecting document type
-        self.docTypeComboBox = QComboBox(self)
-        self.docTypeComboBox.addItems(['Purchase Order', 'Invoice'])
-        self.docTypeComboBox.setFixedWidth(150)  # Set a fixed width for the combo box
-        topLayout.addWidget(self.docTypeComboBox)
+    
 
         
         # Add spacer to push status label to the right
         spacer = QSpacerItem(20, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
         topLayout.addItem(spacer)
 
-        self.multiPageCheckbox = QCheckBox("Multi-page Invoice", self)
-        layout.addWidget(self.multiPageCheckbox)  # Add the checkbox to the main layout
-
+        
         self.statusLabel = QLabel('Status: Ready', self)
         self.statusLabel.setStyleSheet("QLabel { color: green; font-weight: bold; }")  # Add styling to status label
         topLayout.addWidget(self.statusLabel)
 
         layout.addLayout(topLayout)  # Add top layout to the main layout
 
-        # Create a grid layout for buttons
-        buttonLayout = QGridLayout()
-
-        self.scanButton = QPushButton('Scan to PDF', self)
-        self.scanButton.clicked.connect(self.startScanning)
-        buttonLayout.addWidget(self.scanButton, 1, 2)
-
-        self.importButton = QPushButton('Import Files', self)
-        self.importButton.clicked.connect(self.importFiles)
-        buttonLayout.addWidget(self.importButton, 0, 0)
-
-        self.processButton = QPushButton('Process Files', self)
-        self.processButton.clicked.connect(self.processFiles)
-        buttonLayout.addWidget(self.processButton, 0, 1)
-
-        # Create a new button for Invoice Output
-        self.invoiceOutputButton = QPushButton('Invoice Output', self)
-        self.invoiceOutputButton.clicked.connect(self.openInvoiceOutputFolder)
-        buttonLayout.addWidget(self.invoiceOutputButton, 0, 2) 
-
-        self.pullPricesButton = QPushButton('Pull Prices', self)
-        self.pullPricesButton.clicked.connect(self.pullPrices)
-        buttonLayout.addWidget(self.pullPricesButton, 1, 1)
-
-        self.runVbaButton = QPushButton('Batch Clean', self)
-        self.runVbaButton.clicked.connect(self.runVbaMacro)
-        buttonLayout.addWidget(self.runVbaButton, 1, 0)
-
-        layout.addLayout(buttonLayout)  # Add button layout to the main layout
+        
 
         # Add spacer to push exit button to the bottom
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
@@ -158,6 +145,42 @@ class PDFProcessingApp(QMainWindow):
         cp = QDesktopWidget().availableGeometry().center()
         qr.moveCenter(cp)
         self.move(qr.topLeft())
+
+    def initInvoiceTab(self):
+        layout = QVBoxLayout(self.invoiceTab)
+        
+        # Add buttons related to Invoices
+        self.importButton_Invoice = QPushButton('Import Files', self.invoiceTab)
+        self.importButton_Invoice.clicked.connect(self.importFiles)
+        layout.addWidget(self.importButton_Invoice)
+
+        self.processButton_Invoice = QPushButton('Process Invoice Files', self.invoiceTab)
+        self.processButton_Invoice.clicked.connect(lambda: self.processFiles('Invoice', self.processButton_Invoice))
+        layout.addWidget(self.processButton_Invoice)
+
+        self.multiPageCheckbox = QCheckBox("Multi-page Invoice", self.invoiceTab)
+        layout.addWidget(self.multiPageCheckbox)
+
+        self.invoiceOutputButton = QPushButton('Invoice Output', self.invoiceTab)
+        self.invoiceOutputButton.clicked.connect(self.openInvoiceOutputFolder)
+        layout.addWidget(self.invoiceOutputButton)
+   
+    def initPurchaseOrderTab(self):
+        layout = QVBoxLayout(self.purchaseOrderTab)
+        
+        # Add buttons related to Purchase Orders
+        self.importButton_PO = QPushButton('Import Files', self.purchaseOrderTab)
+        self.importButton_PO.clicked.connect(self.importFiles)
+        layout.addWidget(self.importButton_PO)
+
+        self.processButton_PO = QPushButton('Process PO Files', self.purchaseOrderTab)
+        self.processButton_PO.clicked.connect(lambda: self.processFiles('Purchase Order', self.processButton_PO))
+        layout.addWidget(self.processButton_PO)
+
+        self.runVbaButton_PO = QPushButton('Batch Clean', self.purchaseOrderTab)
+        self.runVbaButton_PO.clicked.connect(self.runVbaMacro)
+        layout.addWidget(self.runVbaButton_PO)
+        
     @pyqtSlot()
     def importFiles(self):
         """
@@ -178,26 +201,31 @@ class PDFProcessingApp(QMainWindow):
         files, _ = QFileDialog.getOpenFileNames(self, "Choose a PDF file", default_dir, "PDF Files (*.pdf)", options=options)
         if files:
             self.files = files  # Store the files as an instance variable
-            self.statusLabel.setText(f'Status: Files Imported{files}')
+            file_names = [os.path.basename(file) for file in files]
+            self.statusLabel.setText(f'Status: Files Imported: {", ".join(file_names)}')
     @pyqtSlot()
-    def processFiles(self):
-        # Set endpoint and key based on document type selection
-        doc_type = self.docTypeComboBox.currentText()
+    def processFiles(self, doc_type, process_button):
+        """
+        Processes files based on the document type passed from the tab.
+        """
+        # Set paths and credentials based on the document type
         if doc_type == 'Invoice':
             endpoint = "https://phh-invoices.cognitiveservices.azure.com/"
-            doc_path = base_path + "Invoices/"
+            base_doc_path = os.path.join(base_path, "Invoices/")
             key = os.getenv("AZURE_API_KEY_PHH-INVOICES")
+            
         else:  # Purchase Order
             endpoint = "https://pos.cognitiveservices.azure.com/"
             key = os.getenv("AZURE_API_KEY_POS")
-            doc_path = base_path + "Purchase Orders/"
+            base_doc_path = base_path + "Purchase Orders/"
 
+        # Update paths based on the document type
         paths = {
-            'input': doc_path + 'Input/', 
-            'processed': doc_path + 'Processed/', 
-            'output': doc_path + 'Output/', 
-            'archive_input': doc_path + 'Input/Archive/', 
-            'archive_processed': doc_path + 'Processed/Archive/'
+            'input': os.path.join(base_doc_path, 'Input/'),
+            'processed': os.path.join(base_doc_path, 'Processed/'),
+            'output': os.path.join(base_doc_path, 'Output/'),
+            'archive_input': os.path.join(base_doc_path, 'Input/Archive/'),
+            'archive_processed': os.path.join(base_doc_path, 'Processed/Archive/')
         }
         
         # Create the credential and client with the selected endpoint and key
@@ -205,12 +233,12 @@ class PDFProcessingApp(QMainWindow):
         self.client = DocumentAnalysisClient(endpoint=endpoint, credential=credential)
 
         if hasattr(self, 'files') and self.files:
-            self.processButton.setEnabled(False)
+            process_button.setEnabled(False)
             self.statusLabel.setText('Status: Processing...')
             
             multi_page = self.multiPageCheckbox.isChecked()  # Check the state of the checkbox
-            self.worker = WorkerThread(self.processPDFs, self.files, paths, multi_page)
-            self.worker.finished.connect(self.onProcessingComplete)
+            self.worker = WorkerThread(self.processPDFs, self.files, paths, multi_page, doc_type)
+            self.worker.finished.connect(lambda: self.onProcessingComplete(doc_type))  # Pass doc_type to the onProcessingComplete function
             self.worker.start()
             self.runningThreads.append(self.worker)  # Keep track of the thread
         else:
@@ -229,7 +257,7 @@ class PDFProcessingApp(QMainWindow):
         self.runningThreads.remove(worker)  
 
 
-    def processPDFs(self, files, paths, multi_page):
+    def processPDFs(self, files, paths, multi_page, doc_type):
         """
         Process a list of PDF files based on the document type.
 
@@ -240,11 +268,23 @@ class PDFProcessingApp(QMainWindow):
         Returns:
             None
         """
-        doc_type = self.docTypeComboBox.currentText()
-
+    
         for file_path in files:
+            if not os.path.exists(file_path):
+                QMessageBox.critical(self, "Error", f"File not found: {file_path}")
+                continue
+
             # Extract filename for use in paths
             filename = os.path.basename(file_path)
+
+             # Debug: Print paths to verify
+            print(f"Copying from: {file_path}")
+            print(f"Copying to: {os.path.join(paths['input'], filename)}")
+
+        # Ensure the source file exists
+            if not os.path.exists(file_path):
+                print(f"Error: Source file does not exist: {file_path}")
+                continue
 
             # Step 1: Copy file to the 'input' directory
             shutil.copy(file_path, os.path.join(paths['input'], filename))
@@ -266,14 +306,23 @@ class PDFProcessingApp(QMainWindow):
 
     
     @pyqtSlot()
-    def onProcessingComplete(self):
-        self.processButton.setEnabled(True)
-        self.statusLabel.setText('Status: Complete')
-        QMessageBox.information(self, 'Complete', 'Files have been processed.')
+    def onProcessingComplete(self, doc_type):
+        """
+        Called when processing is complete.
+        """
+        if doc_type == 'Purchase Order':
+            self.statusLabel.setText('Status: Purchase Order Processing Complete. Running Batch Clean...')
+            self.runVbaMacro()  # Automatically run the batch clean for Purchase Orders
+        else:
+            self.statusLabel.setText('Status: Invoice Processing Complete.')
+        
+        self.processButton_PO.setEnabled(True)
+        self.processButton_Invoice.setEnabled(True)
+        QMessageBox.information(self, 'Complete', f'{doc_type} files have been processed.')
+        
         # Assuming you know which thread called this, you can remove it from the list:
         self.runningThreads.remove(self.worker)
         self.worker = None  # Remove reference to the worker
-
 
     def split_pdf(self, file_path, paths):
         """
@@ -396,7 +445,6 @@ class PDFProcessingApp(QMainWindow):
         for file in files:
             file_path = os.path.join(paths['processed'], file)
             shutil.move(file_path, os.path.join(paths['archive_processed'], file))
-
 
     def analyze_general_documents(self, paths):
         """
@@ -537,6 +585,9 @@ class PDFProcessingApp(QMainWindow):
                 personal_wb.Close(False)  # Close the PERSONAL workbook without saving changes
                 excel.Quit()  # Close the Excel application
                 del excel  # Ensure Excel process is terminated
+            
+            # Update the status label
+            self.statusLabel.setText("Status: Batch Clean Complete.")
 
         
     def save_document_output(self, all_data_df, line_items_df, file_name, doc_type, paths):
@@ -561,17 +612,8 @@ class PDFProcessingApp(QMainWindow):
     def closeEvent(self, event):
         for worker in self.runningThreads:
             worker.wait()  # Wait for the thread to finish
-        event.accept()  # Now it's safe to close
-
-    @pyqtSlot()
-    def startScanning(self):
-        output_pdf_path = f'C:\\Users\\daniel.pace\\Documents\\Coding\\PO Automation\\Azure\\Purchase Orders\\Start\\{date}.pdf'  # Set your output PDF path
-        device_id = '{6BDD1FC6-810F-11D0-BEC7-08002BE2092F}\\0000'   # Set your scanner's device ID
-        scanner_module.scan_to_pdf(output_pdf_path, device_id)
-        QMessageBox.information(self, 'Scanning Complete', f'Scanned document saved to {output_pdf_path}')
+        event.accept()  # Now it's safe to close  
         
-
-
 def main():
     app = QApplication(sys.argv)
     ex = PDFProcessingApp()
